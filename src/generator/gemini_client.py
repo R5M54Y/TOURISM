@@ -1,6 +1,7 @@
 import google.generativeai as genai
 import os
 import time
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,33 +15,61 @@ class GeminiClient:
         self.retry_delay = 5  # detik
     
     def generate_article(self, topic, keywords=None):
-        """Generate travel article with retry logic"""
+        """Generate travel article in HTML format with plain text title"""
         
         prompt = f"""
-        Write a comprehensive travel article about {topic} in ENGLISH with this exact structure:
+        Write a travel article about {topic} in ENGLISH with the following requirements:
 
-        1. **Title:** An engaging, click-worthy title (max 60 characters)
-        2. **Introduction:** A compelling opening paragraph (100-150 words) that hooks the reader
-        3. **Top Highlights:** 3-5 key attractions or experiences at this destination (each with 1-2 sentences)
-        4. **Travel Tips:** Practical advice for visitors (best time to visit, getting around, local customs)
-        5. **Conclusion:** A memorable closing paragraph that encourages travel
-
-        Requirements:
-        - Use natural, conversational English
-        - Include relevant SEO keywords naturally
-        - Make it informative and engaging for travelers
-        - Avoid markdown formatting, use plain text with line breaks
+        ====== TITLE ======
+        Create a plain text title (max 60 characters). NO "Title:" prefix, just the title text.
+        
+        ====== CONTENT FORMAT (MUST BE VALID HTML) ======
+        
+        Format the article using this HTML structure:
+        
+        1. Opening paragraph in <p> tags
+        2. Section headers using <h2>
+        3. Bullet points using <ul> and <li> for key attractions
+        4. Use <strong> for important text, <em> for emphasis
+        5. Travel tips as checklist using ✅ (unicode) inside <p> with <br> line breaks
+        6. Closing paragraph in <p>
+        
+        Example of how your response should look:
+        
+        [Plain text title here without any prefix]
+        
+        <p>Opening paragraph about the destination...</p>
+        
+        <h2>Top Attractions in {topic}</h2>
+        <ul>
+          <li><strong>Attraction 1</strong> - Brief description</li>
+          <li><strong>Attraction 2</strong> - Brief description</li>
+        </ul>
+        
+        <h2>Travel Tips</h2>
+        <p>✅ Best time to visit: Month to Month<br>
+        ✅ Getting around: Transportation tips<br>
+        ✅ Local customs: Important etiquette</p>
+        
+        <h2>Conclusion</h2>
+        <p>Final thoughts and encouragement to visit...</p>
+        
+        IMPORTANT RULES:
+        - Title must be plain text on its own line, NO HTML tags
+        - Title NO "Title:" prefix, just the actual title
+        - Content must be valid HTML
+        - Use natural, engaging, SEO-friendly English
+        - NO markdown, NO code blocks
         """
         
         if keywords:
-            prompt += f"\n\nIncorporate these keywords naturally: {', '.join(keywords)}"
+            prompt += f"\n\nInclude these keywords naturally in the content: {', '.join(keywords)}"
         
-        # Retry logic for timeout errors
+        # Retry logic
         for attempt in range(self.max_retries):
             try:
                 print(f"  🔄 Generating article (attempt {attempt + 1}/{self.max_retries})...")
                 
-                # Generate with timeout protection
                 response = self.model.generate_content(
                     prompt,
                     generation_config={
@@ -66,26 +95,20 @@ class GeminiClient:
                         continue
                     else:
                         print(f"  ❌ All retries failed for {topic}")
-                        raise Exception(f"Timeout after {self.max_retries} attempts: {error_msg}")
+                        raise Exception(f"Timeout after {self.max_retries} attempts")
                 else:
-                    # Non-timeout error, raise immediately
                     raise e
         
         raise Exception("Unexpected error in generate_article")
     
     def generate_image_prompt(self, topic):
-        """Generate a prompt for image generation"""
+        """Generate prompt for image search"""
         
         prompt = f"""
-        Create a detailed image generation prompt for a travel photo about: {topic}
+        Create a short image search query (max 50 words) for a travel photo about: {topic}
         
-        The prompt should be in English and include:
-        - Subject: The main landmark or scene
-        - Style: Travel photography, vibrant colors, natural lighting
-        - Mood: Inspiring, adventurous, beautiful
-        - Technical details: High resolution, 4K, cinematic composition
-        
-        Max 100 words. Output ONLY the prompt, no explanations.
+        The query should be in English.
+        Output ONLY the query, no explanations.
         """
         
         for attempt in range(self.max_retries):
@@ -99,44 +122,63 @@ class GeminiClient:
                     continue
                 raise e
         
-        # Fallback prompt if all retries fail
-        return f"Beautiful travel photography of {topic}, vibrant colors, golden hour lighting, high resolution, 4K, cinematic"
+        return f"Beautiful travel photography of {topic}"
     
     def _parse_response(self, raw_text):
-        """Parse Gemini response into structured format"""
+        """Parse Gemini response: extract plain text title + HTML content"""
         
         lines = raw_text.strip().split('\n')
         
-        # Try to find title (first non-empty line, often has ** or #)
+        # Extract title (first non-empty line that doesn't look like HTML)
         title = ""
         for line in lines:
-            clean_line = line.strip().replace('**', '').replace('#', '').strip()
-            if clean_line and len(clean_line) < 80:
-                title = clean_line
-                break
-        
-        # If no title found, use first line
-        if not title and lines:
-            title = lines[0].strip().replace('**', '').replace('#', '').strip()
-        
-        # Body is everything except the title line
-        body_lines = []
-        found_title = False
-        for line in lines:
             clean_line = line.strip()
-            if not found_title and (clean_line.startswith('**') or clean_line.startswith('#') or clean_line == title):
-                found_title = True
+            if clean_line and not clean_line.startswith('<'):
+                # Check if it contains any prohibited prefixes
+                if not clean_line.lower().startswith(('title:', 'heading:', 'header:')):
+                    title = clean_line
+                    break
+        
+        # Fallback title if none found
+        if not title:
+            # Try to extract from first text before any HTML
+            for line in lines:
+                if line.strip() and '<' not in line:
+                    title = line.strip()
+                    break
+        
+        # Final fallback
+        if not title:
+            title = "Travel Guide"
+        
+        # Limit title to 60 characters
+        title = title[:60]
+        
+        # Extract content: everything after the title line
+        content_lines = []
+        found_title = False
+        
+        for line in lines:
+            if not found_title:
+                # Skip until we pass the title line
+                if line.strip() == title or (title in line and len(line) < 100):
+                    found_title = True
                 continue
-            body_lines.append(line)
+            else:
+                content_lines.append(line)
         
-        body = '\n'.join(body_lines).strip()
+        content = '\n'.join(content_lines).strip()
         
-        # Fallback if body is empty
-        if not body:
-            body = raw_text
+        # If content is empty, use original text but remove title
+        if not content:
+            content = raw_text.replace(title, '', 1).strip()
+        
+        # Ensure content has HTML (wrap plain text in <p> if needed)
+        if content and not content.startswith('<'):
+            content = f"<p>{content}</p>"
         
         return {
-            'title': title[:60] if title else f"Travel Guide: {topic[:40]}",  # Max 60 chars
-            'content': body,
+            'title': title,
+            'content': content,
             'raw_text': raw_text
         }
