@@ -21,7 +21,8 @@ class GoogleSheetsManager:
         self.client = gspread.authorize(creds)
         
         # Open spreadsheet by name (buat dulu di Google Sheets)
-        self.sheet = self.client.open("Travel Articles Queue").sheet1
+        spreadsheet_url = "https://docs.google.com/spreadsheets/d/1y_HxN4Bbnr6I0Y1nGY6jM67QPp0au3epnn6WzGeHsX4/edit"
+        self.sheet = self.client.open_by_url(spreadsheet_url).sheet1
     
     def add_article(self, article_data):
         """Simpan artikel ke spreadsheet"""
