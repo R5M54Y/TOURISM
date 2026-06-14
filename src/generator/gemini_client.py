@@ -7,45 +7,41 @@ load_dotenv()
 class GeminiClient:
     def __init__(self):
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-        self.model = genai.GenerativeModel('gemini-pro')
+        self.model = genai.GenerativeModel('gemini-1.5-flash')
     
     def generate_article(self, topic, keywords=None):
         prompt = f"""
-        Buat artikel wisata tentang {topic} dengan struktur:
+        Write a travel article about {topic} in ENGLISH with this structure:
         
-        1. Judul yang menarik (maks 60 karakter)
-        2. Paragraf pembuka (100-150 kata)
-        3. 3-5 poin penting tentang destinasi
-        4. Tips berkunjung
-        5. Kesimpulan
+        1. Engaging title (max 60 characters)
+        2. Opening hook paragraph (100-150 words)
+        3. 3-5 key highlights of the destination
+        4. Travel tips
+        5. Conclusion
         
-        Gunakan bahasa Indonesia yang natural dan engaging.
+        Use natural, engaging, and SEO-friendly English.
         """
         
         if keywords:
-            prompt += f"\nSertakan keywords: {', '.join(keywords)}"
+            prompt += f"\nInclude these keywords: {', '.join(keywords)}"
         
         response = self.model.generate_content(prompt)
         return self._parse_response(response.text)
     
     def generate_image_prompt(self, topic):
         prompt = f"""
-        Buat prompt untuk AI image generator tentang: {topic}
-        Prompt harus dalam bahasa Inggris, deskriptif, style: travel photography, vibrant colors, cinematic lighting.
-        Maks 100 kata.
+        Create an image generation prompt (in English) for: {topic}
+        Style: travel photography, vibrant colors, cinematic lighting, high resolution.
+        Max 100 words.
         """
         
         response = self.model.generate_content(prompt)
         return response.text
     
     def _parse_response(self, raw_text):
-        # Simple parsing - lo bisa custom sesuai kebutuhan
         lines = raw_text.strip().split('\n')
         
-        # Extract title (assuming first line as title)
         title = lines[0].replace('#', '').strip()
-        
-        # Body is everything else
         body = '\n'.join(lines[1:])
         
         return {
