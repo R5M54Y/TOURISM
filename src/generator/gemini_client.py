@@ -7,14 +7,38 @@ load_dotenv()
 class GeminiClient:
     def __init__(self):
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # List model yang mungkin tersedia (urutan prioritas)
+        model_candidates = [
+            'models/gemini-1.5-flash',
+            'gemini-1.5-flash', 
+            'models/gemini-1.5-pro',
+            'gemini-1.5-pro',
+            'models/gemini-pro',
+            'gemini-pro'
+        ]
+        
+        self.model = None
+        for model_name in model_candidates:
+            try:
+                self.model = genai.GenerativeModel(model_name)
+                # Test generate kecil
+                test_response = self.model.generate_content("Test")
+                print(f"✓ Using model: {model_name}")
+                break
+            except Exception as e:
+                print(f"✗ {model_name} not available: {e}")
+                continue
+        
+        if not self.model:
+            raise Exception("No working Gemini model found!")
     
     def generate_article(self, topic, keywords=None):
         prompt = f"""
         Write a travel article about {topic} in ENGLISH with this structure:
         
         1. Engaging title (max 60 characters)
-        2. Opening hook paragraph (100-150 words)
+        2. Opening paragraph (100-150 words)
         3. 3-5 key highlights of the destination
         4. Travel tips
         5. Conclusion
