@@ -18,11 +18,11 @@ class ImageHandler:
         self.pexels_api_key = os.getenv('PEXELS_API_KEY')
     
     def generate_and_upload_image(self, prompt, topic):
-        """Fetch image from Pexels or fallback to Unsplash, then upload to Cloudinary"""
+        """Fetch real image from Pexels/Unsplash, then upload to Cloudinary"""
         
         image_url = None
         
-        # Try 1: Pexels API (most reliable)
+        # Try 1: Pexels API
         if self.pexels_api_key:
             try:
                 print(f"  📸 Trying Pexels for: {topic}")
@@ -46,21 +46,28 @@ class ImageHandler:
                 response = requests.get(unsplash_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
                 
                 if response.status_code == 200:
-                    img = Image.open(BytesIO(response.content))
+                    # Download image from Unsplash
+                    img_data = response.content
+                    img = Image.open(BytesIO(img_data))
+                    
+                    # Save temp file
                     temp_path = f"/tmp/{topic.replace(' ', '_')}.jpg"
                     img.save(temp_path)
                     
+                    # Upload to Cloudinary
                     upload_result = cloudinary.uploader.upload(temp_path)
                     os.remove(temp_path)
+                    
                     image_url = upload_result['secure_url']
-                    print(f"  ✅ Unsplash found image")
+                    print(f"  ✅ Unsplash image uploaded to Cloudinary")
             except Exception as e:
                 print(f"  ⚠️ Unsplash error: {e}")
         
-        # Try 3: Placeholder via Cloudinary (last resort)
+        # Try 3: Placeholder image from Cloudinary's own library (not custom path)
         if not image_url:
-            print(f"  📸 Using Cloudinary placeholder")
-            image_url = f"https://res.cloudinary.com/{os.getenv('CLOUDINARY_CLOUD_NAME')}/image/upload/w_1200,h_630,c_fill/v1/travel/{topic.replace(' ', '_')}"
+            print(f"  📸 Using Cloudinary demo placeholder")
+            # Pake gambar demo dari Cloudinary yang pasti ada
+            image_url = "https://res.cloudinary.com/demo/image/upload/w_1200,h_630,c_fill/sample.jpg"
         
         return image_url
     
