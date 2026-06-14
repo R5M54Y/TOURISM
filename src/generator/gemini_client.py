@@ -7,31 +7,8 @@ load_dotenv()
 class GeminiClient:
     def __init__(self):
         genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-        
-        # List model yang mungkin tersedia (urutan prioritas)
-        model_candidates = [
-            'models/gemini-1.5-flash',
-            'gemini-1.5-flash', 
-            'models/gemini-1.5-pro',
-            'gemini-1.5-pro',
-            'models/gemini-pro',
-            'gemini-pro'
-        ]
-        
-        self.model = None
-        for model_name in model_candidates:
-            try:
-                self.model = genai.GenerativeModel(model_name)
-                # Test generate kecil
-                test_response = self.model.generate_content("Test")
-                print(f"✓ Using model: {model_name}")
-                break
-            except Exception as e:
-                print(f"✗ {model_name} not available: {e}")
-                continue
-        
-        if not self.model:
-            raise Exception("No working Gemini model found!")
+        # PAKE MODEL GEMINI 3.5 FLASH - Paling OK buat artikel
+        self.model = genai.GenerativeModel('models/gemini-3.5-flash')
     
     def generate_article(self, topic, keywords=None):
         prompt = f"""
