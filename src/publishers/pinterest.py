@@ -1,21 +1,15 @@
-import requests
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
 class PinterestPublisher:
     def __init__(self):
         self.access_token = os.getenv('PINTEREST_ACCESS_TOKEN')
         self.board_id = os.getenv('PINTEREST_BOARD_ID')
-        self.base_url = "https://api.pinterest.com/v5"
+        # PAKE SANDBOX URL
+        self.base_url = "https://api-sandbox.pinterest.com/v5"  # ← tambah -sandbox
     
     def publish(self, title, content, image_url, topic):
-        # Short description for pin
         description = f"{title[:200]}\n\nCheck out this amazing travel destination!"
         
         payload = {
-            "title": title[:100],  # Max 100 chars
+            "title": title[:100],
             "description": description,
             "link": image_url,
             "board_id": self.board_id,
