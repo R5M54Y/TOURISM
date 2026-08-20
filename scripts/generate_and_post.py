@@ -212,4 +212,7 @@ for topic in topics:
             sheets.update_status(row_id, 'failed')
         continue
 
-print("\n🎉 All articles generated and published!")
+print("\n" + "="*50)
+print("✅ All articles generated and published successfully")
+print("="*50)
+sys.exit(0)
