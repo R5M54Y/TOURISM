@@ -2,7 +2,9 @@ import google.generativeai as genai
 import os
 import time
 import re
+from dotenv import load_dotenv
 from datetime import datetime
+from src.generator.article_contract import QuickFact, WhyVisit, SEO
 
 load_dotenv()
 
@@ -280,7 +282,7 @@ class GeminiClient:
         if ga_match:
             text = re.sub(r'<[^>]+>', '', ga_match.group(1)).strip()
             if text:
-                article_data['getting_around'] = [{'name': 'Transportation', 'description': text}]
+                article_data['getting_around'] = [{'mode': 'Transportation', 'description': text}]
         
         # --- Extract where_to_stay ---
         wt_match = re.search(r'<h2>Where to Stay</h2>.*?<p>(.*?)</p>', html_content, re.DOTALL)
