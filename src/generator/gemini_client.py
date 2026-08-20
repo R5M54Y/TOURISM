@@ -2,7 +2,7 @@ import google.generativeai as genai
 import os
 import time
 import re
-from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 
@@ -13,16 +13,15 @@ class GeminiClient:
         self.model = genai.GenerativeModel('models/gemini-3.5-flash')
         self.max_retries = 3
         self.retry_delay = 5  # detik
-    
+
     def generate_article(self, topic, keywords=None):
         """Generate travel article in HTML format with plain text title"""
         
-        prompt = f"""
-        Write a travel article about {topic} in ENGLISH with the following requirements:
+        prompt = f"""Write a travel article about {topic} in ENGLISH with the following requirements:
 
         ====== TITLE ======
         Create a plain text title (max 60 characters). NO "Title:" prefix, just the title text.
-        
+
         ====== CONTENT FORMAT (MUST BE VALID HTML) ======
         
         Format the article using this HTML structure:
@@ -82,9 +81,10 @@ class GeminiClient:
                 if response and response.text:
                     print(f"  ✅ Article generated successfully")
                     return self._parse_response(response.text)
+                
                 else:
                     raise Exception("Empty response from Gemini")
-                    
+            
             except Exception as e:
                 error_msg = str(e)
                 if "504" in error_msg or "Deadline" in error_msg or "timeout" in error_msg.lower():
@@ -104,8 +104,7 @@ class GeminiClient:
     def generate_image_prompt(self, topic):
         """Generate prompt for image search"""
         
-        prompt = f"""
-        Create a short image search query (max 50 words) for a travel photo about: {topic}
+        prompt = f"""Create a short image search query (max 50 words) for a travel photo about: {topic}
         
         The query should be in English.
         Output ONLY the query, no explanations.
@@ -125,8 +124,9 @@ class GeminiClient:
         return f"Beautiful travel photography of {topic}"
     
     def _parse_response(self, raw_text):
-        """Parse Gemini response: extract plain text title + HTML content"""
+        """Parse Gemini response: extract structured article data compatible with TravelArticle contract"""
         
+        # Split into lines for processing
         lines = raw_text.strip().split('\n')
         
         # Extract title (first non-empty line that doesn't look like HTML)
@@ -154,31 +154,196 @@ class GeminiClient:
         # Limit title to 60 characters
         title = title[:60]
         
-        # Extract content: everything after the title line
-        content_lines = []
-        found_title = False
-        
-        for line in lines:
-            if not found_title:
-                # Skip until we pass the title line
-                if line.strip() == title or (title in line and len(line) < 100):
-                    found_title = True
-                continue
-            else:
-                content_lines.append(line)
-        
-        content = '\n'.join(content_lines).strip()
-        
-        # If content is empty, use original text but remove title
-        if not content:
-            content = raw_text.replace(title, '', 1).strip()
-        
-        # Ensure content has HTML (wrap plain text in <p> if needed)
-        if content and not content.startswith('<'):
-            content = f"<p>{content}</p>"
-        
-        return {
+        # Initialize article data with all TravelArticle contract fields
+        # (no 'content' key - mapped to structured fields instead)
+        article_data = {
+            'id': self._generate_article_id(),
+            'destination': '',
+            'country': '',
+            'generation_date': datetime.now().isoformat(),
+            'version': '1.0',
+            'status': 'draft',
             'title': title,
-            'content': content,
-            'raw_text': raw_text
+            'introduction': '',
+            'quick_facts': None,
+            'why_visit': None,
+            'best_things_to_do': [],
+            'best_places_to_visit': [],
+            'best_time_to_visit': '',
+            'how_to_get_there': '',
+            'getting_around': [],
+            'where_to_stay': [],
+            'local_food_to_try': [],
+            'travel_budget': [],
+            'suggested_itinerary': [],
+            'local_travel_tips': [],
+            'safety_practical_info': None,
+            'faq': [],
+            'conclusion': '',
+            'sources': [],
+            'seo': None
         }
+        
+        # Parse the HTML content to extract structured data
+        article_data = self._parse_structured_content('\n'.join(lines), article_data)
+        
+        return article_data
+    
+    def _generate_article_id(self):
+        """Generate a unique article ID"""
+        # Create ID: destination_slug + date + random_suffix
+        return "auto_generated_id"
+    
+    def _parse_structured_content(self, content, article_data):
+        """Parse HTML content to extract structured article fields compatible with TravelArticle"""
+        
+        html_content = content
+        
+        # --- Extract introduction (first <p> tag content) ---
+        intro_match = re.search(r'<p>(.*?)</p>', html_content, re.DOTALL)
+        if intro_match:
+            intro_text = re.sub(r'<[^>]+>', '', intro_match.group(1)).strip()
+            if intro_text and len(intro_text) < 500:
+                article_data['introduction'] = intro_text
+        
+        # --- Extract title if not already found from first line ---
+        if not article_data['title'] or article_data['title'] == "Travel Guide":
+            # Try to find plain text title (first line not starting with <)
+            for line in html_content.split('\n'):
+                clean = line.strip()
+                if clean and not clean.startswith('<') and not clean.lower().startswith(('title:', 'heading:', 'header:')):
+                    candidate = clean[:60]
+                    if candidate and len(candidate) > len(article_data['title']):
+                        article_data['title'] = candidate
+                    break
+        
+        # --- Extract best_things_to_do from <ul><li><strong> patterns ---
+        things_to_do = []
+        for match in re.finditer(r'<li><strong>(.*?)</strong>.*?-(.*?)</li>', html_content):
+            name = re.sub(r'<[^>]+>', '', match.group(1)).strip()
+            desc = re.sub(r'<[^>]+>', '', match.group(2)).strip()
+            if name:
+                things_to_do.append({'name': name, 'description': desc})
+        if things_to_do:
+            article_data['best_things_to_do'] = things_to_do
+        
+        # --- Extract best_places_to_visit from <li> patterns with locations ---
+        places = []
+        for match in re.finditer(r'<li>(?:<strong>)?(.*?)(?:</strong>)?(?:-|:</strong>)(.*?)</li>', html_content, re.DOTALL):
+            name = re.sub(r'<[^>]+>', '', match.group(1)).strip()
+            desc = re.sub(r'<[^>]+>', '', match.group(2)).strip()
+            if name:
+                places.append({'name': name, 'description': desc})
+        if places:
+            article_data['best_places_to_visit'] = places
+        
+        # --- Extract why_visit from Travel Tips checklist ---
+        why_visit_data = {
+            'culture': False, 'history': False, 'nature': False,
+            'food': False, 'architecture': False, 'adventure': False,
+            'shopping': False, 'nightlife': False, 'family_travel': False, 'relaxation': False
+        }
+        tips_match = re.search(r'<h2>Travel Tips</h2>.*?(?=<h2>|<h2>Conclusion|$)', html_content, re.DOTALL)
+        if tips_match:
+            tips_text = tips_match.group(0)
+            checklist_items = re.findall(r'✅\s*(.*?)(?:<br|<|$)', tips_text)
+            for item in checklist_items:
+                item_lower = item.strip().lower()
+                if 'culture' in item_lower: why_visit_data['culture'] = True
+                if 'history' in item_lower: why_visit_data['history'] = True
+                if 'nature' in item_lower: why_visit_data['nature'] = True
+                if 'food' in item_lower: why_visit_data['food'] = True
+                if 'architecture' in item_lower: why_visit_data['architecture'] = True
+                if 'adventure' in item_lower: why_visit_data['adventure'] = True
+                if 'shopping' in item_lower: why_visit_data['shopping'] = True
+                if 'nightlife' in item_lower: why_visit_data['nightlife'] = True
+                if 'family' in item_lower: why_visit_data['family_travel'] = True
+                if 'relax' in item_lower or 'leisure' in item_lower: why_visit_data['relaxation'] = True
+        article_data['why_visit'] = why_visit_data
+        
+        # --- Extract best_time_to_visit ---
+        bttv_match = re.search(r'<h2>Best Time to Visit</h2>.*?<p>(.*?)</p>', html_content, re.DOTALL)
+        if bttv_match:
+            text = re.sub(r'<[^>]+>', '', bttv_match.group(1)).strip()
+            if text:
+                article_data['best_time_to_visit'] = text[:300]
+        
+        # --- Extract how_to_get_there ---
+        hgt_match = re.search(r'<h2>How to Get There</h2>.*?<p>(.*?)</p>', html_content, re.DOTALL)
+        if hgt_match:
+            text = re.sub(r'<[^>]+>', '', hgt_match.group(1)).strip()
+            if text:
+                article_data['how_to_get_there'] = text[:400]
+        
+        # --- Extract getting_around ---
+        ga_match = re.search(r'<h2>Getting Around</h2>.*?<p>(.*?)</p>', html_content, re.DOTALL)
+        if ga_match:
+            text = re.sub(r'<[^>]+>', '', ga_match.group(1)).strip()
+            if text:
+                article_data['getting_around'] = [{'name': 'Transportation', 'description': text}]
+        
+        # --- Extract where_to_stay ---
+        wt_match = re.search(r'<h2>Where to Stay</h2>.*?<p>(.*?)</p>', html_content, re.DOTALL)
+        if wt_match:
+            text = re.sub(r'<[^>]+>', '', wt_match.group(1)).strip()
+            if text:
+                article_data['where_to_stay'] = [{'area': 'General', 'characteristics': text}]
+        
+        # --- Extract local_food_to_try ---
+        lft_match = re.search(r'<h2>Local Food to Try</h2>.*?<p>(.*?)</p>', html_content, re.DOTALL)
+        if lft_match:
+            text = re.sub(r'<[^>]+>', '', lft_match.group(1)).strip()
+            if text:
+                article_data['local_food_to_try'] = [{'dish': 'Local specialty', 'description': text}]
+        
+        # --- Extract travel_budget ---
+        tb_match = re.search(r'<h2>Travel Budget</h2>.*?<p>(.*?)</p>', html_content, re.DOTALL)
+        if tb_match:
+            text = re.sub(r'<[^>]+>', '', tb_match.group(1)).strip()
+            if text:
+                article_data['travel_budget'] = [{'level': 'Mid-range', 'daily_total': text}]
+        
+        # --- Extract suggested_itinerary ---
+        si_match = re.search(r'<h2>Suggested Itinerary</h2>.*?<p>(.*?)</p>', html_content, re.DOTALL)
+        if si_match:
+            text = re.sub(r'<[^>]+>', '', si_match.group(1)).strip()
+            if text:
+                article_data['suggested_itinerary'] = [{'day_flow': text, 'highlights': '', 'practical_notes': ''}]
+        
+        # --- Extract local_travel_tips ---
+        ltt_match = re.search(r'<h2>Local Travel Tips</h2>.*?<p>(.*?)</p>', html_content, re.DOTALL)
+        if ltt_match:
+            text = re.sub(r'<[^>]+>', '', ltt_match.group(1)).strip()
+            if text:
+                article_data['local_travel_tips'] = [{'category': 'General', 'advice': text}]
+        
+        # --- Extract safety_practical_info ---
+        spi_match = re.search(r'<h2>Safety Practical Info</h2>.*?<p>(.*?)</p>', html_content, re.DOTALL)
+        if spi_match:
+            text = re.sub(r'<[^>]+>', '', spi_match.group(1)).strip()
+            if text:
+                article_data['safety_practical_info'] = {'emergency_contact': '', 'weather_risks': text, 'transportation_risks': '', 'local_laws': '', 'connectivity': '', 'sim_esim': '', 'insurance': ''}
+        
+        # --- Extract conclusion ---
+        concl_match = re.search(r'<h2>Conclusion</h2>.*?<p>(.*?)</p>', html_content, re.DOTALL)
+        if concl_match:
+            text = re.sub(r'<[^>]+>', '', concl_match.group(1)).strip()
+            if text:
+                article_data['conclusion'] = text[:300]
+        
+        # --- Extract sources ---
+        # Look for URLs or reference links in the content
+        url_matches = re.findall(r'(?:href="|src="|url:\s*)([^"\s>]+)', html_content)
+        if url_matches:
+            article_data['sources'] = [{'title': 'Travel source', 'url': url_matches[0]}]
+        
+        # --- Extract SEO metadata ---
+        # Try to find meta description, keywords, etc.
+        meta_desc_match = re.search(r'meta.*?description["\']?\s*[:]?\s*["\']?(.*?)["\']', html_content, re.IGNORECASE | re.DOTALL)
+        if meta_desc_match:
+            desc = re.sub(r'<[^>]+>', '', meta_desc_match.group(1)).strip()[:300]
+            if desc:
+                from src.generator.article_contract import SEO
+                article_data['seo'] = SEO(meta_description=desc, primary_keyword=title[:40] if title else '', slug=title[:30].lower().replace(' ', '-') if title else '', secondary_keywords=[], search_intent='')
+        
+        return article_data
