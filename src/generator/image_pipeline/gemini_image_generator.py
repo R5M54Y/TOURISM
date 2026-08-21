@@ -31,7 +31,7 @@ class _FatalError(Exception):
 
 
 # Supported image-generation model in Google Generative AI
-GEMINI_IMAGE_MODEL = "gemini-2.0-flash-exp"
+GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"
 GEMINI_IMAGE_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 # Retry configuration for 429 handling
