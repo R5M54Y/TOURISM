@@ -12,7 +12,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.generator.gemini_client import GeminiClient
 from src.generator.article_contract import TravelArticle, ArticleContract, ArticleStatus
 from src.generator.article_validator import ArticleValidator
-from src.generator.image_pipeline import run_image_pipeline
 
 # Imports for normal mode only (should not be loaded in dry-run)
 from src.sheets.google_sheets import GoogleSheetsManager
@@ -72,7 +71,6 @@ gemini = GeminiClient()
 if Dry_run:
     # Dry-run mode: initialize only what we need
     # Gemini client already initialized
-    images = None
     sheets = None
     tumblr = None
     pinterest = None
@@ -80,8 +78,6 @@ if Dry_run:
     medium = None
 else:
     # Normal mode: initialize all services
-    from src.generator.image_handler import ImageHandler
-    images = ImageHandler()
     sheets = GoogleSheetsManager()
     tumblr = TumblrPublisher()
     pinterest = PinterestPublisher()
@@ -144,46 +140,33 @@ for topic in topics:
             print("\nAll tests passed.")
             sys.exit(0)   # Exit successfully after dry-run validation
 
-        # --- Normal (production) mode below ---
-        # 3. Generate image from existing image_prompt and upload to Blogger
-        image_prompt = article.image_prompt
-        if not image_prompt:
-            image_prompt = gemini.generate_image_prompt(topic)
-
-        image_result = run_image_pipeline(image_prompt, topic)
-        image_url = image_result.get('image_url')
-
-        if image_url:
-            print(f"✓ Image uploaded: {image_url}")
-        else:
-            print(f"✗ Image generation/upload failed: {image_result.get('error', 'Unknown error')}")
-
-        # 4. Save to Google Sheets
+        # 3. NO IMAGE GENERATION - just save the existing article with image_prompt
         article_data = {
             'title': article.title,
             'content': json.dumps(article.to_dict(), ensure_ascii=False),
-            'image_url': image_url,
+            'image_url': '',  # No image URL since we're not generating images
             'keywords': topic.split(',')[0].strip()
         }
+
         row_id = sheets.add_article(article_data)
         print(f"✓ Saved to Google Sheets (Row {row_id})")
 
-        # 5. Post to Tumblr
+        # 4. Post to Tumblr (without image since we're not generating any)
         tumblr_result = tumblr.publish(
             article.title,
             json.dumps(article.to_dict(), ensure_ascii=False),
-            image_url
+            ''  # Empty image URL
         )
         if tumblr_result['success']:
             print(f"✓ Posted to Tumblr: {tumblr_result['url']}")
         else:
             print(f"✗ Tumblr failed: {tumblr_result.get('error', 'Unknown error')}")
 
-        # 6. Post to Pinterest
+        # 5. Post to Pinterest (without image since we're not generating any)
         pinterest_result = pinterest.publish(
             article.title,
             json.dumps(article.to_dict(), ensure_ascii=False),
-            image_url,
+            '',  # Empty image URL
             topic
         )
         if pinterest_result['success']:
@@ -191,7 +174,7 @@ for topic in topics:
         else:
             print(f"✗ Pinterest failed: {pinterest_result.get('error', 'Unknown error')}")
 
-        # 7. Post to Blogger
+        # 6. Post to Blogger (without image since we're not generating any)
         blogger_result = blogger.publish(
             article.title,
             json.dumps(article.to_dict(), ensure_ascii=False)
@@ -201,7 +184,7 @@ for topic in topics:
         else:
             print(f"✗ Blogger failed: {blogger_result.get('error', 'Unknown error')}")
 
-        # 8. Post to Medium
+        # 7. Post to Medium (without image since we're not generating any)
         medium_result = medium.publish(
             article.title,
             json.dumps(article.to_dict(), ensure_ascii=False)
@@ -211,7 +194,7 @@ for topic in topics:
         else:
             print(f"✗ Medium failed: {medium_result.get('error', 'Unknown error')}")
 
-        # Update status di sheets
+        # Update status in sheets
         sheets.update_status(row_id, 'completed')
         print(f"✅ Done with: {topic}")
 
