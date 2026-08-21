@@ -89,9 +89,10 @@ class GeminiClient:
             kw_line = f"\nInclude these keywords naturally: {', '.join(keywords)}"
 
         schema_block = '''{
-  "title": "string (max 60 chars, article title about the destination)",
-  "introduction": "string (2-4 sentences, max 500 chars)",
-  "quick_facts": {
+          "title": "string (max 60 chars, article title about the destination)",
+          "introduction": "string (2-4 sentences, max 500 chars)",
+          "image_prompt": "string — a detailed visual prompt describing the ideal hero image for this destination, suitable for Gemini Image generation. Must describe visual subject, setting, atmosphere, composition, and relevant cultural/geographic characteristics. Do not include text, logos, watermarks, UI elements, or fabricated landmarks.",
+          "quick_facts": {
     "destination": "string — destination name",
     "country": "string — country name",
     "region": "string — region within country",
@@ -290,7 +291,7 @@ Output ONLY the query, no explanations."""
 
         # ── Top-level key check ──────────────────────────────────────
         required_keys = [
-            'title', 'introduction', 'quick_facts', 'why_visit',
+            'title', 'introduction', 'image_prompt', 'quick_facts', 'why_visit',
             'best_things_to_do', 'best_places_to_visit', 'best_time_to_visit',
             'how_to_get_there', 'getting_around', 'where_to_stay',
             'local_food_to_try', 'travel_budget', 'suggested_itinerary',
@@ -492,6 +493,23 @@ Output ONLY the query, no explanations."""
             errors.append(f"conclusion too short ({len(conc.strip())} chars)")
         elif not conc:
             errors.append("conclusion is empty")
+
+        # image_prompt (string) — hero image prompt for Gemini Image generation
+        ip = data.get('image_prompt', '')
+        if isinstance(ip, str):
+            stripped = ip.strip()
+            if stripped == "":
+                errors.append("image_prompt is empty")
+            elif len(stripped) < 30:
+                errors.append(f"image_prompt too short ({len(stripped)} chars)")
+            elif stripped.lower() in ("n/a", "na", "varies", "tbd", "unknown",
+                                       "information unavailable", "see local sources",
+                                       "not available", "none"):
+                errors.append(f"image_prompt is filler: '{stripped}'")
+        elif ip is None:
+            errors.append("image_prompt is null")
+        else:
+            errors.append("image_prompt is not a string")
 
         # sources
         _req_list(data, 'sources', [

@@ -198,6 +198,9 @@ class TravelArticle:
     
     # SEO
     seo: SEO = None
+
+    # Image generation prompt (for later Gemini Image step)
+    image_prompt: str = ""
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary with proper serialization"""
@@ -247,7 +250,11 @@ class TravelArticle:
                    'suggested_itinerary', 'local_travel_tips', 'faq', 'sources']:
             if key in data and not isinstance(data[key], list):
                 del data[key]
-        
+
+        # Add image_prompt if present
+        if self.image_prompt:
+            data['image_prompt'] = self.image_prompt
+
         return data
     
     @classmethod
