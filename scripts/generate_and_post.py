@@ -12,6 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.generator.gemini_client import GeminiClient
 from src.generator.article_contract import TravelArticle, ArticleContract, ArticleStatus
 from src.generator.article_validator import ArticleValidator
+from src.generator.image_pipeline import run_image_pipeline
 
 # Imports for normal mode only (should not be loaded in dry-run)
 from src.sheets.google_sheets import GoogleSheetsManager
@@ -144,10 +145,18 @@ for topic in topics:
             sys.exit(0)   # Exit successfully after dry-run validation
 
         # --- Normal (production) mode below ---
-        # 3. Generate image prompt & get image
-        image_prompt = gemini.generate_image_prompt(topic)
-        image_url = images.generate_and_upload_image(image_prompt, topic)
-        print(f"✓ Image uploaded: {image_url}")
+        # 3. Generate image from existing image_prompt and upload to Blogger
+        image_prompt = article.image_prompt
+        if not image_prompt:
+            image_prompt = gemini.generate_image_prompt(topic)
+
+        image_result = run_image_pipeline(image_prompt, topic)
+        image_url = image_result.get('image_url')
+
+        if image_url:
+            print(f"✓ Image uploaded: {image_url}")
+        else:
+            print(f"✗ Image generation/upload failed: {image_result.get('error', 'Unknown error')}")
 
         # 4. Save to Google Sheets
         article_data = {
