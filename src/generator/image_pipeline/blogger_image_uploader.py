@@ -78,8 +78,10 @@ class BloggerImageUploader:
             raise ValueError("image_bytes cannot be empty")
 
         if not self.service:
-            # Fallback to Google Cloud Storage if not Blogger auth
-            return self._upload_to_gcs_fallback(image_bytes, filename)
+            # Blogger service unavailable — cannot host image without it.
+            # No GCS/Cloudinary fallback (out of scope).
+            print("  ⚠️ Blogger service unavailable — cannot upload image")
+            return None
 
         try:
             # Blogger v3 media upload
@@ -105,39 +107,13 @@ class BloggerImageUploader:
                     return response['url']
             except Exception as blogger_error:
                 print(f"  ⚠️ Blogger media upload failed: {blogger_error}")
-                # Fall back to GCS
-                return self._upload_to_gcs_fallback(image_bytes, filename)
+                return None
 
         except Exception as e:
             print(f"  ⚠️ Image upload error: {e}")
-            return self._upload_to_gcs_fallback(image_bytes, filename)
+            return None
 
         return None
-
-    def _upload_to_gcs_fallback(self, image_bytes: bytes, filename: str) -> Optional[str]:
-        """Fallback: Upload to Google Cloud Storage and return public URL."""
-        try:
-            from google.cloud import storage
-
-            bucket_name = os.getenv('GCS_IMAGE_BUCKET')
-            if not bucket_name:
-                return None
-
-            client = storage.Client()
-            bucket = client.bucket(bucket_name)
-
-            blob_name = f"article-images/{filename}"
-            blob = bucket.blob(blob_name)
-            blob.upload_from_string(image_bytes, content_type='image/png')
-
-            # Make public
-            blob.make_public()
-
-            return blob.public_url
-
-        except Exception as e:
-            print(f"  ⚠️ GCS fallback failed: {e}")
-            return None
 
 
 def upload_image_to_blogger(image_bytes: bytes, filename: str = "hero_image.png") -> Optional[str]:
