@@ -53,3 +53,12 @@ jobs:
                 else
                   python scripts/generate_and_post.py
                 fi
+
+    - name: Run Blogger image worker
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
+        BLOGGER_ACCESS_TOKEN: ${{ secrets.BLOGGER_ACCESS_TOKEN }}
+        GOOGLE_SHEETS_KEY: ${{ secrets.GOOGLE_SHEETS_KEY }}
+      run: |
+        python -c "from scripts.image_worker import processMissingImages; processMissingImages()"
