@@ -35,7 +35,7 @@ def processMissingImages():
     processed_any = False
     
     for row in pending_rows:
-        article_id = row['id']
+        article_id = row['row_id']
         title = row['title']
         image_prompt = row.get('image_prompt', '').strip()
         image_url = row.get('image_url', '').strip()
