@@ -158,6 +158,39 @@ def test_400_fails_immediately():
     print("✓ 400 fails immediately (no retry)")
 
 
+def test_429_preserves_diagnostic_details():
+    """429 error message must preserve status, Retry-After, and response body.
+
+    Also verifies the API key is never included in the diagnostic.
+    """
+    calls = {'n': 0}
+    body = '{"error":{"code":429,"message":"Resource has been exhausted","status":"RESOURCE_EXHAUSTED"}}'
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        calls['n'] += 1
+        return FakeResponse(429, body, headers={'Retry-After': '30'})
+
+    with mock.patch.dict(os.environ, {'GEMINI_API_KEY': 'test-key-123'}):
+        with mock.patch('requests.post', side_effect=fake_post):
+            from src.generator.image_pipeline.gemini_image_generator import generate_image_from_prompt
+            try:
+                generate_image_from_prompt("test prompt")
+                print("✗ 429 should have raised")
+                return False
+            except Exception as e:
+                msg = str(e)
+
+    # 4 attempts (MAX_RETRIES)
+    assert calls['n'] == 4, f"Expected 4 attempts, got {calls['n']}"
+    # Diagnostic must contain status + Retry-After + body snippet
+    assert '429' in msg, f"Status missing in diagnostic: {msg}"
+    assert 'retry_after=30' in msg, f"Retry-After missing: {msg}"
+    assert 'RESOURCE_EXHAUSTED' in msg, f"Response body missing: {msg}"
+    # Security: API key must never leak into the diagnostic message
+    assert 'test-key-123' not in msg, f"API key leaked: {msg}"
+    print("✓ 429 preserves status/Retry-After/body; no API-key leak")
+
+
 if __name__ == "__main__":
     tests = [
         test_auth_header_is_api_key,
@@ -165,6 +198,7 @@ if __name__ == "__main__":
         test_429_retries_with_backoff,
         test_500_retries_then_fails,
         test_400_fails_immediately,
+        test_429_preserves_diagnostic_details,
     ]
     passed = 0
     for t in tests:

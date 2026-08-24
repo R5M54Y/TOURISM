@@ -118,9 +118,20 @@ class GeminiImageGenerator:
                     else:
                         wait_time = self._calculate_backoff(attempt)
 
+                    # Preserve Gemini 429 diagnostic details for troubleshooting
+                    response_body = None
+                    try:
+                        response_body = response.text[:500] if response.text else None
+                    except Exception:
+                        pass
+
                     print(f"  ⚠️ Rate limited (429). Waiting {wait_time:.1f}s before retry...")
+                    print(f"  📋 429 detail: retry_after={retry_after}, body={response_body}")
                     time.sleep(wait_time)
-                    last_error = Exception("Rate limit (429) after retries")
+                    last_error = Exception(
+                        f"Rate limit (429) - retry_after={retry_after}, "
+                        f"body={response_body}"
+                    )
                     continue
 
                 # 401/403 = authentication error. Never retry — fail immediately.
